@@ -4,7 +4,7 @@ import re
 
 from random import choice
 
-from BeautifulSoup import BeautifulSoup
+from bs4 import BeautifulSoup
 import requests
 
 
@@ -130,8 +130,12 @@ class MP(Scraper):
 
 
     def scrape_bio(self, tr):
-        # .content_text_column > div:nth-child(1) > table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(1) > td:nth-child(2) > table:nth-child(4)
-        return {}
+        def v(node):
+            xs = node.findAll('span', attrs={'class': 'content_txt'})
+            return (xs[0].text.lower().strip().replace(':', '').replace(' ', '_'), 
+                    xs[1].text.replace('\\r', '').replace('\\n\\n', '\\n'))
+
+        return dict(v(x) for x in tr.findAll('td', attrs={'class': 'line_under_table'}))
 
 if __name__ == "__main__":
     main()
