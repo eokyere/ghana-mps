@@ -1,2 +1,13 @@
 # Ignore output of scraper
 data.sqlite
+
+# typical py ignore
+tmp/
+*.pyc
+*.bak
+*.log
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+NOTES
+TODO
