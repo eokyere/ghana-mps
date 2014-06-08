@@ -29,7 +29,8 @@ def main(args=None):
     client = MP()
     links, next = client.links(client.start_url)
 
-    print client.details(links[0])
+    val = client.details(links[0])
+    print val
 
 
 class Scraper(object):
@@ -112,6 +113,11 @@ class MP(Scraper):
                   constituency=constituency,
                   region=region)
         d.update(self.scrape_bio(tx[0]))
+        d.update(self.scrape_emp_others(tx[-1]))
+
+        d['party'] = d['party'].split('(')[0].strip()
+        for key in ('employment', 'education'):
+            d[key] = d[key].split('\n')
 
         return d
 
@@ -128,14 +134,28 @@ class MP(Scraper):
                         text.strip(), flags=re.IGNORECASE)
         return match.group(2), match.group(3) if match else None
 
-
     def scrape_bio(self, tr):
-        def v(node):
+        def f(node):
             xs = node.findAll('span', attrs={'class': 'content_txt'})
-            return (xs[0].text.lower().strip().replace(':', '').replace(' ', '_'), 
-                    xs[1].text.replace('\\r', '').replace('\\n\\n', '\\n'))
+            return (self.key(xs[0].text), self.cleaned_val(xs[1].text))
+        return dict(f(x) for x in tr.findAll('td', attrs={'class': 'line_under_table'}))
 
-        return dict(v(x) for x in tr.findAll('td', attrs={'class': 'line_under_table'}))
+    def scrape_emp_others(self, tr):
+        def f(node):
+            xs = node.findAll('td')
+            return (self.key(xs[0].text), self.cleaned_val(xs[1].text))
+        return dict(f(x) for x in tr.findAll(attrs={'class': 'content_txt'}))
+
+    def key(self, text):
+        return text.lower().strip().replace(':', '').replace(' ', '_')
+
+    def cleaned_val(self, text):
+        text = text.strip().replace('\r', '').replace('\n\n', '\n')
+        while text.endswith('\n'):
+            text = text[:-2]
+        while text.startswith('\n'):
+            text = text[2:]
+        return text
 
 if __name__ == "__main__":
     main()

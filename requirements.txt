@@ -1,2 +1,4 @@
 beautifulsoup4==4.3.2
+dumptruck>=0.1.6
 requests==2.3.0
+scraperwiki==0.3.10
