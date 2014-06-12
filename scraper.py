@@ -27,13 +27,19 @@ UA_OPTIONS = [
 
 def main(args=None):
     client = MP()
-    links, next = client.links(client.start_url)
-
-    val = client.details(links[0])
-    print val
-
-
-class Scraper(object):
+    links, nextpage = client.links(client.start_url)
+    mps =[]
+    while nextpage is not None:
+      mps += [client.details(link) for link in links]
+      links, nextpage = client.links(nextpage)
+      print mps[0]
+      nextpage = None
+      #print 'Next page is {0}'.format(nextpage)
+    
+    
+    #return mps
+    
+class Scraper(object): 
     headers = {'User-Agent': choice(UA_OPTIONS)}    
     
     def get(self, url):
@@ -47,11 +53,11 @@ class Scraper(object):
         """
         return BeautifulSoup(self.strip(content))
     
-    def l(self, s, text):
+    def l(self, s, txt):
         """Returns the href of a link (anchor tag) with the supplied text
         """
         try:
-            return s.find('a', text=text).parent['href']
+            return s.find('a', text=txt).get('href')
         except:
             return None
 
@@ -115,7 +121,7 @@ class MP(Scraper):
         and the link to the next page for detailed pages links (if any)
         """
         html = self.get(url)
-        next_page = self.l(html, '&gt;')
+        next_page = self.l(html, '>')
         return (self.lx(html), self.resolve(next_page),)
         
     def lx(self, html):
@@ -132,10 +138,14 @@ class MP(Scraper):
         tx = self.tr(html.find('td', attrs={'class': 'content_text_column'}).find('table'))
 
         constituency, region = self.scrape_constituency_and_region(tx[0])
-
-        d =  dict(name=self.scrape_name(tx[0]),
+        title, name = self.scrape_name(tx[0])
+        d =  dict(title=title,
+                  name=name,
                   constituency=constituency,
                   region=region)
+        print title, name
+        d.update(id=url.split('/')[-1])
+        d.update(slug=d['name'].lower().replace(" ","-"))
         d.update(self.scrape_bio(tx[0]))
         d.update(self.scrape_emp_others(tx[-1]))
 
@@ -150,8 +160,8 @@ class MP(Scraper):
         """
         # div.left_subheaders > strong:nth-child(1) 
         text = tr.find('div', attrs={'class': 'left_subheaders'}).text
-        match = re.match('^(Hon.)?\s*([^\s].*)', text.strip(), flags=re.IGNORECASE)
-        return match.group(2) if match else None
+        match = re.match('^(Hon.)?\s*([^\s][^\(]*)\s*(\([^\)]+\))?', text.strip(), flags=re.IGNORECASE)
+        return (match.group(3), match.group(2)) if match else None
 
     def scrape_constituency_and_region(self, tr):
         """Returns the constituency and region of an MP
@@ -189,6 +199,20 @@ class MP(Scraper):
             text = text[2:]
         return text
 
-
+class Committee(Scraper):
+  @property
+  def start_url(self):
+      return self.resolve('/committees')
+  
+  def links(self, url):
+      """Extract the name and link for committee
+      """
+      html = self.get(url)
+      committees = html.findAll('a', attrs={'class':'committee_repeater'})
+      return [(self.strip(x.string), x['href']) for x in committees]
+      
+  
+  
+  
 if __name__ == "__main__":
     main()
