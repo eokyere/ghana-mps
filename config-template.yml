@@ -1,0 +1,5 @@
+# Popit Configuration parameters
+
+POPIT_INSTANCE: '<popit-instance-name>'
+POPIT_EMAIL: '<popit-email-address>'
+POPIT_PASSWORD: '<popit-password>'

@@ -1,7 +1,7 @@
 # Ignore output of scraper
 data.sqlite
 
-# typical py ignore
+# Our typical py ignore
 tmp/
 *.pyc
 *.bak
@@ -11,3 +11,6 @@ tmp/
 *.sublime-workspace
 NOTES
 TODO
+
+# ignore config.yml
+config.yml

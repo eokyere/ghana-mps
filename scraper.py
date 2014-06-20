@@ -1,60 +1,78 @@
 #! /usr/bin/env python
 
-import re
-
-from random import choice
-
 from bs4 import BeautifulSoup
+
+import re
 import requests
+import helper
 
 
 BASE_URI = 'http://www.parliament.gh'
 
 
-UA_OPTIONS = [
-    ('Mozilla/5.0 (Windows; U; Windows NT 5.1; it; rv:1.8.1.11) '
-     'Gecko/20071127 Firefox/2.0.0.11'),
-    'Opera/9.25 (Windows NT 5.1; U; en)',
-    ('Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; '
-     '.NET CLR 1.1.4322; .NET CLR 2.0.50727)'),
-    ('Mozilla/5.0 (compatible; Konqueror/3.5; Linux) KHTML/3.5.5 '
-     '(like Gecko) (Kubuntu)'),
-    ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.0.12) Gecko/20070731 '
-     'Ubuntu/dapper-security Firefox/1.5.0.12'),
-    'Lynx/2.8.5rel.1 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/1.2.9'
-]
-
-
 def main(args=None):
-    client = MP()
-    links, next = client.links(client.start_url)
+    api = MP()
+    links, next = api.links(api.start_url)
 
-    val = client.details(links[0])
-    print val
+    print api.data(links[0])
+    print api.popit(links[0])
 
+
+def slugify(text):
+    return '-'.join(text.strip().lower().split(' '))
 
 class Scraper(object):
-    headers = {'User-Agent': choice(UA_OPTIONS)}    
-    
-    def get(self, url):
-        """Returns BeautifulSoup of the content at the supplied url (resolved to the BASE_URI)
+    def tr(self, table, index=None):
+        """Scrape table rows 
+
+        This method finds tr non-recursively 
+        (BeautifulSoup.findAll is recursive by default)
+
+        :param index: index of tr node to be returned
+        :returns: table rows (tr) of the supplied table.
         """
-        url = self.resolve(url)    
-        return self.bs(requests.get(url, headers=self.headers).content)
-    
-    def bs(self, content):
-        """Returns BeautifulSoup of the supplied content (html)
+        xs = table.findAll('tr', recursive=False)
+        if index:
+            return xs[index]
+        return xs
+
+    def td(self, tr, index=None):
+        """Scrape table data. 
+
+        This method finds td non-recursively 
+        (BeautifulSoup.findAll is recursive by default)
+
+        :param index: index of td node to be returned
+        :returns: list of td, or td node if index supplied
         """
-        return BeautifulSoup(self.strip(content))
-    
-    def l(self, s, text):
-        """Returns the href of a link (anchor tag) with the supplied text
+        xs = tr.findAll('td', recursive=False)
+        if index:
+            return xs[index]
+        return xs
+
+    def href(self, s, text):
+        """Scrape the href of an anchor tag.
+
+        :param text: anchor text
+        :returns: href string
         """
         try:
             return s.find('a', text=text).parent['href']
         except:
             return None
 
+    def get(self, url):
+        """Returns BeautifulSoup of the content at the supplied url 
+        (resolved to the BASE_URI)
+        """
+        url = self.resolve(url)    
+        return self.bs(requests.get(url, headers=helper.headers).content)
+    
+    def bs(self, content):
+        """Returns BeautifulSoup of the supplied content (html)
+        """
+        return BeautifulSoup(self.strip(content))
+    
     def resolve(self, uri):
         """Resolves the supplied uri relative to the BASE_URI
         """
@@ -66,26 +84,6 @@ class Scraper(object):
                     uri = '%s/%s' % (BASE_URI, uri)
             if uri.startswith(BASE_URI):
                 return uri
-
-    def tr(self, table, index=None):
-        """Returns table rows (tr) of the supplied table. 
-
-        This method finds tr non-recursively (BeautifulSoup.findAll is recursive by default)
-        """
-        xs = table.findAll('tr', recursive=False)
-        if index:
-            return xs[index]
-        return xs
-
-    def td(self, tr, index=None):
-        """Returns table data (td) of the supplied row. 
-
-        This method finds td non-recursively (BeautifulSoup.findAll is recursive by default)
-        """
-        xs = tr.findAll('td', recursive=False)
-        if index:
-            return xs[index]
-        return xs
 
     def strip(self, s):
         """Clean up http 'space' entities
@@ -106,6 +104,110 @@ class Scraper(object):
 
 
 class MP(Scraper):
+    def popit(self, url):
+        data = self.data(url)
+
+        names = data['full_name'].split(' ')
+
+        return {
+
+            "family_name": names[-1],
+            "given_names": ' '.join(names[:-1]),
+            # "honorific_prefix": "Mr",
+            # "id": "org.odekro/person/451",
+            # "identifiers": [
+            #     {
+            #         "identifier": "5551",
+            #         "scheme": "myreps_person_id"
+            #     }
+            # ],
+            # "memberships": [
+            #     {
+            #         "id": "org.mysociety.za/membership/451",
+            #         "organization_id": "org.mysociety.za/party/da",
+            #         "person_id": "org.mysociety.za/person/451"
+            #     },
+            #     {
+            #         "area": {
+            #             "id": "org.mysociety.za/mapit/code/p/KZN",
+            #             "name": "KwaZulu-Natal"
+            #         },
+            #         "en_ddate": "2011-09-24",
+            #         "end_reason": "Resigned",
+            #         "id": "org.mysociety.za/membership/680",
+            #         "label": "Member for %s",
+            #         "organization_id": "org.mysociety.za/house/national-assembly",
+            #         "person_id": "org.mysociety.za/person/451",
+            #         "role": "Member",
+            #         "start_date": "2009-05-06"
+            #     }
+            # ],
+            "name": data['full_name'],
+            "slug": slugify(data['full_name'])        
+        }
+
+    def data(self, url):
+        """Scrape MPs bio and employment data
+
+        :returns: dict of MPs data
+        """
+        html = self.get(url)
+        tr = self.tr(html.find('td', attrs={'class': 'content_text_column'}).find('table'))
+
+        constituency, region = self.constituency_and_region(tr[0])
+
+        d =  dict(full_name=self.full_name(tr[0]),
+                  constituency=constituency,
+                  region=region)
+        d.update(self.bio(tr[0]))
+        d.update(self.emp_others(tr[-1]))
+
+        key = 'party'
+        d[key] = d[key].split('(')[0].strip()
+
+        for key in ('employment', 'education'):
+            d[key] = d[key].split('\n')
+
+        return d
+
+    def full_name(self, tr):
+        """Scrape 
+        :param tr: the table row that contains the MPs name
+        :returns: the full name string of an MP
+        """
+        # div.left_subheaders > strong:nth-child(1) 
+        text = tr.find('div', attrs={'class': 'left_subheaders'}).text
+        match = re.match('^(Hon.)?\s*([^\s].*)', text.strip(), flags=re.IGNORECASE)
+        return match.group(2) if match else None
+
+    def constituency_and_region(self, tr):
+        """Constituency and region names.
+
+        :returns: the tuple(string, string) of constituency and region names
+        """
+        # div.content_subheader
+        text = tr.find('div', attrs={'class': 'content_subheader'}).text
+        match = re.match('^(MP for)?\s*([^\s].+)\s+constituency,\s*(\w+)( Region)?', 
+                        text.strip(), flags=re.IGNORECASE)
+        return match.group(2), match.group(3) if match else None
+
+    def bio(self, tr):
+        """
+        :returns: the scraped bio from an MP detailed page
+        """
+        def f(node):
+            xs = node.findAll('span', attrs={'class': 'content_txt'})
+            return (self.key(xs[0].text), self.cleaned_text(xs[1].text))
+        return dict(f(x) for x in tr.findAll('td', attrs={'class': 'line_under_table'}))
+
+    def emp_others(self, tr):
+        """Returns the employment and 'others' info from an MP detailed page
+        """
+        def f(node):
+            xs = node.findAll('td')
+            return (self.key(xs[0].text), self.cleaned_text(xs[1].text))
+        return dict(f(x) for x in tr.findAll(attrs={'class': 'content_txt'}))
+
     @property
     def start_url(self):
         return self.resolve('/parliamentarians')
@@ -115,7 +217,7 @@ class MP(Scraper):
         and the link to the next page for detailed pages links (if any)
         """
         html = self.get(url)
-        next_page = self.l(html, '&gt;')
+        next_page = self.href(html, '&gt;')
         return (self.lx(html), self.resolve(next_page),)
         
     def lx(self, html):
@@ -125,59 +227,6 @@ class MP(Scraper):
         xs = td.findAll('a', attrs={'class':'content_subheader'})
         return [x['href'] for x in xs]
     
-    def details(self, url):
-        """Returns scraped MPs detailed information
-        """
-        html = self.get(url)
-        tx = self.tr(html.find('td', attrs={'class': 'content_text_column'}).find('table'))
-
-        constituency, region = self.scrape_constituency_and_region(tx[0])
-
-        d =  dict(name=self.scrape_name(tx[0]),
-                  constituency=constituency,
-                  region=region)
-        d.update(self.scrape_bio(tx[0]))
-        d.update(self.scrape_emp_others(tx[-1]))
-
-        d['party'] = d['party'].split('(')[0].strip()
-        for key in ('employment', 'education'):
-            d[key] = d[key].split('\n')
-
-        return d
-
-    def scrape_name(self, tr):
-        """Returns the fullname of an MP
-        """
-        # div.left_subheaders > strong:nth-child(1) 
-        text = tr.find('div', attrs={'class': 'left_subheaders'}).text
-        match = re.match('^(Hon.)?\s*([^\s].*)', text.strip(), flags=re.IGNORECASE)
-        return match.group(2) if match else None
-
-    def scrape_constituency_and_region(self, tr):
-        """Returns the constituency and region of an MP
-        """
-        # div.content_subheader
-        text = tr.find('div', attrs={'class': 'content_subheader'}).text
-        match = re.match('^(MP for)?\s*([^\s].+)\s+constituency,\s*(\w+)( Region)?', 
-                        text.strip(), flags=re.IGNORECASE)
-        return match.group(2), match.group(3) if match else None
-
-    def scrape_bio(self, tr):
-        """Returns the scraped bio from an MP detailed page
-        """
-        def f(node):
-            xs = node.findAll('span', attrs={'class': 'content_txt'})
-            return (self.key(xs[0].text), self.cleaned_text(xs[1].text))
-        return dict(f(x) for x in tr.findAll('td', attrs={'class': 'line_under_table'}))
-
-    def scrape_emp_others(self, tr):
-        """Returns the employment and 'others' info from an MP detailed page
-        """
-        def f(node):
-            xs = node.findAll('td')
-            return (self.key(xs[0].text), self.cleaned_text(xs[1].text))
-        return dict(f(x) for x in tr.findAll(attrs={'class': 'content_txt'}))
-
     def key(self, text):
         return text.lower().strip().replace(':', '').replace(' ', '_')
 
