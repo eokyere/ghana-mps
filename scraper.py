@@ -2,24 +2,44 @@
 
 from bs4 import BeautifulSoup
 
+import helper
+import logging
 import re
 import requests
-import helper
+import yaml
 
 
 BASE_URI = 'http://www.parliament.gh'
 
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
-def main(args=None):
-    api = MP()
-    links, next = api.links(api.start_url)
 
-    print api.data(links[0])
-    print api.popit(links[0])
+def main():
+    scrape_mps()
+
+
+def scrape_mps():
+    parser = MP()
+    next = parser.start_url    
+    mps = []
+
+    while next:
+        log.info('>>> Retrieving links from: %s' % next)
+        urls, next = parser.links(next)
+        mps.extend([parser.data(url) for url in urls])
+        next = None
+
+    log.debug(mps)
+
+    fl = open('mps.yml', 'w')
+    yaml.safe_dump(mps, fl)
+    fl.close()
 
 
 def slugify(text):
-    return '-'.join(text.strip().lower().split(' '))
+    return '-'.join(text.lower().replace('.', '').split())
+
 
 class Scraper(object):
     def tr(self, table, index=None):
@@ -60,6 +80,7 @@ class Scraper(object):
             return s.find('a', text=text).parent['href']
         except:
             return None
+
 
     def get(self, url):
         """Returns BeautifulSoup of the content at the supplied url 
@@ -104,86 +125,55 @@ class Scraper(object):
 
 
 class MP(Scraper):
-    def popit(self, url):
-        data = self.data(url)
-
-        names = data['full_name'].split(' ')
-
-        return {
-
-            "family_name": names[-1],
-            "given_names": ' '.join(names[:-1]),
-            # "honorific_prefix": "Mr",
-            # "id": "org.odekro/person/451",
-            # "identifiers": [
-            #     {
-            #         "identifier": "5551",
-            #         "scheme": "myreps_person_id"
-            #     }
-            # ],
-            # "memberships": [
-            #     {
-            #         "id": "org.mysociety.za/membership/451",
-            #         "organization_id": "org.mysociety.za/party/da",
-            #         "person_id": "org.mysociety.za/person/451"
-            #     },
-            #     {
-            #         "area": {
-            #             "id": "org.mysociety.za/mapit/code/p/KZN",
-            #             "name": "KwaZulu-Natal"
-            #         },
-            #         "en_ddate": "2011-09-24",
-            #         "end_reason": "Resigned",
-            #         "id": "org.mysociety.za/membership/680",
-            #         "label": "Member for %s",
-            #         "organization_id": "org.mysociety.za/house/national-assembly",
-            #         "person_id": "org.mysociety.za/person/451",
-            #         "role": "Member",
-            #         "start_date": "2009-05-06"
-            #     }
-            # ],
-            "name": data['full_name'],
-            "slug": slugify(data['full_name'])        
-        }
-
     def data(self, url):
-        """Scrape MPs bio and employment data
+        """Scrape MPs bio, employment data, and memberships
 
         :returns: dict of MPs data
         """
         html = self.get(url)
+
         tr = self.tr(html.find('td', attrs={'class': 'content_text_column'}).find('table'))
 
         constituency, region = self.constituency_and_region(tr[0])
+        title, full_name = self.full_name(tr[0])
 
-        d =  dict(full_name=self.full_name(tr[0]),
+        d =  dict(title=title,
+                  full_name=full_name,
                   constituency=constituency,
                   region=region)
-        d.update(self.bio(tr[0]))
+
+        d.update(self.bio_and_memberships(tr[0]))
         d.update(self.emp_others(tr[-1]))
+        d.update(tag=url.split('/')[-1])
+        d.update(_slug=slugify(full_name))
 
         key = 'party'
         d[key] = d[key].split('(')[0].strip()
 
-        for key in ('employment', 'education'):
+        for key in ('employment', 'education', 'committees'):
             d[key] = d[key].split('\n')
 
         return d
 
     def full_name(self, tr):
-        """Scrape 
+        """Title and Full name 
+        
         :param tr: the table row that contains the MPs name
-        :returns: the full name string of an MP
+        :returns: tuple(string, string) of the title and full name of an MP
         """
         # div.left_subheaders > strong:nth-child(1) 
         text = tr.find('div', attrs={'class': 'left_subheaders'}).text
-        match = re.match('^(Hon.)?\s*([^\s].*)', text.strip(), flags=re.IGNORECASE)
-        return match.group(2) if match else None
+        match = re.match('^(Hon.)?\s*([^\s][^\(]*)\s*(\([^\)]+\))?', text.strip(), flags=re.IGNORECASE)
+        title, name = (match.group(3), match.group(2)) if match else (None, None)
+        if title:
+            title = title[1:-1]
+        return title, name
+
 
     def constituency_and_region(self, tr):
         """Constituency and region names.
 
-        :returns: the tuple(string, string) of constituency and region names
+        :returns: tuple(string, string) of constituency and region names
         """
         # div.content_subheader
         text = tr.find('div', attrs={'class': 'content_subheader'}).text
@@ -191,9 +181,12 @@ class MP(Scraper):
                         text.strip(), flags=re.IGNORECASE)
         return match.group(2), match.group(3) if match else None
 
-    def bio(self, tr):
+    def bio_and_memberships(self, tr):
         """
-        :returns: the scraped bio from an MP detailed page
+        Keys are: committees, hometown, marital_status, profession, telephone, 
+        religion, date_of_birth, party, education, email
+
+        :returns: bio and memberships dict of from MP detailed page
         """
         def f(node):
             xs = node.findAll('span', attrs={'class': 'content_txt'})
@@ -228,7 +221,7 @@ class MP(Scraper):
         return [x['href'] for x in xs]
     
     def key(self, text):
-        return text.lower().strip().replace(':', '').replace(' ', '_')
+        return str(text.lower().strip().replace(':', '').replace(' ', '_'))
 
     def cleaned_text(self, text):
         text = text.strip().replace('\r', '').replace('\n\n', '\n')
@@ -239,5 +232,19 @@ class MP(Scraper):
         return text
 
 
+class Committee(Scraper):
+    @property
+    def start_url(self):
+        return self.resolve('/committees')
+
+    def links(self, url):
+        """Extract the name and link for committee
+        """
+        html = self.get(url)
+        committees = html.findAll('a', attrs={'class':'committee_repeater'})
+        return [(self.strip(x.string), x['href']) for x in committees]
+
+  
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG, format='[gh-mps scraper | %(levelname)s] %(message)s')
     main()
