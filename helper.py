@@ -1,4 +1,8 @@
 from random import choice
+from bs4 import BeautifulSoup
+
+import requests
+
 
 UA_OPTIONS = [
     ('Mozilla/5.0 (Windows; U; Windows NT 5.1; it; rv:1.8.1.11) '
@@ -13,5 +17,89 @@ UA_OPTIONS = [
     'Lynx/2.8.5rel.1 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/1.2.9'
 ]
 
-headers = {'User-Agent': choice(UA_OPTIONS)} 
 
+class Scraper(object):
+    def __init__(self, base_uri):
+        self.base_uri = base_uri
+        self.headers = {'User-Agent': choice(UA_OPTIONS)} 
+
+    def tr(self, table, index=None):
+        """Scrape table rows 
+
+        This method finds tr non-recursively 
+        (BeautifulSoup.findAll is recursive by default)
+
+        :param index: index of tr node to be returned
+        :returns: table rows (tr) of the supplied table.
+        """
+        xs = table.findAll('tr', recursive=False)
+        if index:
+            return xs[index]
+        return xs
+
+    def td(self, tr, index=None):
+        """Scrape table data. 
+
+        This method finds td non-recursively 
+        (BeautifulSoup.findAll is recursive by default)
+
+        :param index: index of td node to be returned
+        :returns: list of td, or td node if index supplied
+        """
+        xs = tr.findAll('td', recursive=False)
+        if index:
+            return xs[index]
+        return xs
+
+    def href(self, s, text):
+        """Scrape the href of an anchor tag.
+
+        :param text: anchor text
+        :returns: href string
+        """
+        try:
+            return s.find('a', text=text).parent['href']
+        except:
+            return None
+
+
+    def get(self, url):
+        """Returns BeautifulSoup of the content at the supplied url 
+        (resolved to the BASE_URI)
+        """
+        url = self.resolve(url)    
+        return self.bs(requests.get(url, headers=self.headers).content)
+    
+    def bs(self, content):
+        """Returns BeautifulSoup of the supplied content (html)
+        """
+        return BeautifulSoup(self.strip(content))
+    
+    def resolve(self, uri):
+        """Resolves the supplied uri relative to the BASE_URI
+        """
+        if uri is not None:
+            if not uri.startswith('http://'):
+                if uri.startswith('/'):
+                    uri = '%s%s' % (self.base_uri, uri)
+                else:
+                    uri = '%s/%s' % (self.base_uri, uri)
+            if uri.startswith(self.base_uri):
+                return uri
+
+    def strip(self, s):
+        """Clean up http 'space' entities
+        """
+        if s is None:
+            return None
+        try:
+            s = s.replace('&nbsp;', ' ')
+            s = s.strip('\t\r\n ')
+            s1 = None
+            while s1 != s:
+                s1 = s
+                s = re.sub('^\\\\(n|r|t)', '', s)
+                s = re.sub('\\\\(n|r|t)$', '', s)
+            return s
+        except:
+            return ''

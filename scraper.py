@@ -1,12 +1,10 @@
 #! /usr/bin/env python
 
-from bs4 import BeautifulSoup
-
-import helper
 import logging
 import re
-import requests
 import yaml
+
+import helper
 
 
 BASE_URI = 'http://www.parliament.gh'
@@ -16,11 +14,16 @@ log.setLevel(logging.INFO)
 
 
 def main():
-    scrape_mps()
+    mps = scrape_mps()
+    log.debug(mps)
+    
+    fl = open('tmp/mps.yml', 'w')
+    yaml.safe_dump(mps, fl)
+    fl.close()
 
 
 def scrape_mps():
-    parser = MP()
+    parser = MP(BASE_URI)
     next = parser.start_url    
     mps = []
 
@@ -30,101 +33,13 @@ def scrape_mps():
         mps.extend([parser.data(url) for url in urls])
         next = None
 
-    log.debug(mps)
-
-    fl = open('mps.yml', 'w')
-    yaml.safe_dump(mps, fl)
-    fl.close()
-
+    return mps
 
 def slugify(text):
-    return '-'.join(text.lower().replace('.', '').split())
+    return '-'.join(text.lower().replace('.', '').replace(',', '').replace(';', '').split())
 
 
-class Scraper(object):
-    def tr(self, table, index=None):
-        """Scrape table rows 
-
-        This method finds tr non-recursively 
-        (BeautifulSoup.findAll is recursive by default)
-
-        :param index: index of tr node to be returned
-        :returns: table rows (tr) of the supplied table.
-        """
-        xs = table.findAll('tr', recursive=False)
-        if index:
-            return xs[index]
-        return xs
-
-    def td(self, tr, index=None):
-        """Scrape table data. 
-
-        This method finds td non-recursively 
-        (BeautifulSoup.findAll is recursive by default)
-
-        :param index: index of td node to be returned
-        :returns: list of td, or td node if index supplied
-        """
-        xs = tr.findAll('td', recursive=False)
-        if index:
-            return xs[index]
-        return xs
-
-    def href(self, s, text):
-        """Scrape the href of an anchor tag.
-
-        :param text: anchor text
-        :returns: href string
-        """
-        try:
-            return s.find('a', text=text).parent['href']
-        except:
-            return None
-
-
-    def get(self, url):
-        """Returns BeautifulSoup of the content at the supplied url 
-        (resolved to the BASE_URI)
-        """
-        url = self.resolve(url)    
-        return self.bs(requests.get(url, headers=helper.headers).content)
-    
-    def bs(self, content):
-        """Returns BeautifulSoup of the supplied content (html)
-        """
-        return BeautifulSoup(self.strip(content))
-    
-    def resolve(self, uri):
-        """Resolves the supplied uri relative to the BASE_URI
-        """
-        if uri is not None:
-            if not uri.startswith('http://'):
-                if uri.startswith('/'):
-                    uri = '%s%s' % (BASE_URI, uri)
-                else:
-                    uri = '%s/%s' % (BASE_URI, uri)
-            if uri.startswith(BASE_URI):
-                return uri
-
-    def strip(self, s):
-        """Clean up http 'space' entities
-        """
-        if s is None:
-            return None
-        try:
-            s = s.replace('&nbsp;', ' ')
-            s = s.strip('\t\r\n ')
-            s1 = None
-            while s1 != s:
-                s1 = s
-                s = re.sub('^\\\\(n|r|t)', '', s)
-                s = re.sub('\\\\(n|r|t)$', '', s)
-            return s
-        except:
-            return ''
-
-
-class MP(Scraper):
+class MP(helper.Scraper):
     def data(self, url):
         """Scrape MPs bio, employment data, and memberships
 
@@ -137,10 +52,10 @@ class MP(Scraper):
         constituency, region = self.constituency_and_region(tr[0])
         title, full_name = self.full_name(tr[0])
 
-        d =  dict(title=title,
-                  full_name=full_name,
-                  constituency=constituency,
-                  region=region)
+        d = dict(title=title,
+                 full_name=full_name,
+                 constituency=constituency,
+                 region=region)
 
         d.update(self.bio_and_memberships(tr[0]))
         d.update(self.emp_others(tr[-1]))
@@ -152,6 +67,9 @@ class MP(Scraper):
 
         for key in ('employment', 'education', 'committees'):
             d[key] = d[key].split('\n')
+
+        d['phone'] = d['telephone']
+        d.pop('telephone')
 
         return d
 
@@ -232,7 +150,7 @@ class MP(Scraper):
         return text
 
 
-class Committee(Scraper):
+class Committee(helper.Scraper):
     @property
     def start_url(self):
         return self.resolve('/committees')
