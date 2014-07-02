@@ -31,12 +31,12 @@ def main():
     create_parties(api)
     create_committees(api)
 
-    with open('mps.yml', 'r') as fl: # read mps yaml file created by scraper
+    with open('data/mps.yml', 'r') as fl: # read mps yaml file created by scraper
         for data in yaml.load(fl):
             person = create_person(api, data)
             constituency = data['constituency']
             _, _, party_id = party_keys(data['party'])
-            # ?? why do I need an id property to be valid? Popolo spec needs change?
+            # ?? why do I need an empty id property to be valid? Popolo spec needs change?
             area = {'name': constituency, 'id':''} 
             create_membership(api, party_id, person['id'], area=area)
             create_membership(api, parliament['id'], person['id'], 
@@ -57,18 +57,13 @@ def create_parliament(api):
                                     id='org.odekro/house/4')['result']
 
 def create_parties(api):
-    parties = ('National Democratic Congress',
-               'New Patriotic Party',
-               'People\'s National Convention',
-               'Convention People\'s Party',
-               'Great Consolidated People\'s Party',)
-
-    for name in parties:
-        abbreviation, slug, party_id = party_keys(name)
-        create_organization(api, name, 
-                            classification='party', 
-                            abbreviation=abbreviation,
-                            slug=slug, id=party_id)
+    with open('data/political-parties.txt', 'r') as fl:
+        for name in fl.readlines():
+            abbreviation, slug, party_id = party_keys(name)
+            create_organization(api, name, 
+                                classification='party', 
+                                abbreviation=abbreviation,
+                                slug=slug, id=party_id)
 
 def party_keys(name):
     abbreviation = ''.join([x[0] for x in name.split()])
@@ -79,50 +74,10 @@ def create_committees(api):
     # All committees have the following posts;
     # Chair, Vice-Chair, Ranking Member and Deputy Ranking Member
     # TODO: prepopulate posts?
-    standing_committees = (
-        'Standing Orders Committee', 
-        'Business Committee', 
-        'Committee of Privileges', 
-        'Public Accounts Committee', 
-        'Subsidiary Legislation Committee', 
-        'House Committee', 
-        'Finance Committee', 
-        'Appointments Committee', 
-        'Committee on Members Holding Offices of Profit', 
-        'Committee on Government Assurance', 
-        'Judiciary Committee', 
-        'Special Budget Committee', 
-        'Petitions Committee', 
-        'Poverty Reduction Committee', #adhoc
-    )
-
-    for name in standing_committees:
-        create_committee(api, name, 'standing')
-
-    select_committees = (
-        'Committee on Food, Agriculture and Cocoa Affairs', 
-        'Committee on Lands and Forestry', 
-        'Committee on Health', 
-        'Committee on Constitutional, Legal and Parliamentary Affairs', 
-        'Committee on Works and Housing', 
-        'Committee on Local Government and Rural Development', 
-        'Committee on Communications', 
-        'Committee on Foreign Affairs', 
-        'Committee on Employment, Social Welfare and State Enterprises', 
-        'Committee on Defence and Interior', 
-        'Committee on Trade, Industry and Private Sector Development', 
-        'Committee on Environment, Science and Technology', 
-        'Committee on Education', 
-        'Committee on Youth and Sports', 
-        'Committee on Mines and Energy', 
-        'Committee on Roads and Transport', 
-        'Committee on Gender and Children', 
-        'Committee on Tourism and Culture', 
-        'Committee on Regional Integration and NEPAD', 
-    )
-
-    for name in select_committees:
-        create_committee(api, name, 'select')
+    for kind in ('standing', 'select'):
+        with open('data/%s-committees.txt' % kind) as fl:
+            for name in fl.readlines():
+                create_committee(api, name, kind)
 
 def create_committee(api, name, kind):
     return create_organization(api, name, classification='committee',
@@ -178,8 +133,12 @@ def init(api):
             r._store['append_slash'] = False
             r.delete()
 
-    for endpoint in endpoints:
-        assert endpoint.get()['total'] is 0
+        for endpoint in endpoints:
+            try:
+                assert endpoint.get()['total'] is 0
+            except AssertionError, e:
+                print '>>>>', e,  endpoint.get()['total']
+                raise
 
 def committee_key(name):
     pattern = re.compile(r'\b(in|on|of|and|the)\b', flags=re.IGNORECASE)

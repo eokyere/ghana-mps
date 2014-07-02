@@ -17,10 +17,9 @@ def main():
     mps = scrape_mps()
     log.debug(mps)
     
-    fl = open('tmp/mps.yml', 'w')
+    fl = open('data/mps.yml', 'w')
     yaml.safe_dump(mps, fl)
     fl.close()
-
 
 def scrape_mps():
     parser = MP(BASE_URI)
@@ -31,12 +30,10 @@ def scrape_mps():
         log.info('>>> Retrieving links from: %s' % next)
         urls, next = parser.links(next)
         mps.extend([parser.data(url) for url in urls])
-        next = None
-
     return mps
 
 def slugify(text):
-    return '-'.join(text.lower().replace('.', '').replace(',', '').replace(';', '').split())
+    return '-'.join(re.compile(r'[\.,;]').sub('', text.lower()).split())
 
 
 class MP(helper.Scraper):
